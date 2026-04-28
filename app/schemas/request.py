@@ -1,5 +1,5 @@
 from typing import Dict, List
-from pydantic import BaseModel
+from pydantic import BaseModel, HttpUrl
 
 
 class Landmark(BaseModel):
@@ -31,16 +31,13 @@ class RawFrame(BaseModel):
 
 class AnalyzeRequest(BaseModel):
     """
-    /analyze 및 /analyze-direct 엔드포인트 입력 구조 (문서화용).
+    POST /analyze 의 JSON 요청 본문.
 
-    실제 전송 형식: multipart/form-data
-      word        : str
-      audio_file  : WAV 파일
-      frames_json : JSON 문자열 (List[RawFrame])
-
-    프론트엔드 → Spring Boot → AI 서버 경로:
-      프론트가 MediaPipe raw frames + WAV를 Spring Boot에 보내면
-      Spring Boot가 그대로 AI 서버 /analyze 로 포워딩.
+    백엔드(Spring Boot) 흐름:
+      1) 프론트가 보낸 WAV를 백엔드가 S3에 PUT 업로드
+      2) S3 GET용 presigned HTTPS URL 발급
+      3) {word, audio_url, frames} 를 application/json 으로 AI 서버 POST /analyze
     """
     word: str
+    audio_url: HttpUrl
     frames: List[RawFrame]

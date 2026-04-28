@@ -14,10 +14,12 @@
       ▼
 [Spring Boot :8080]
   DB에서 정답 word 확인
+  WAV → S3 PUT 업로드 → GET presigned URL 발급
       │
-      │ ② word + WAV + frames_json (그대로 포워딩)
+      │ ② word + audio_url(presigned) + frames (JSON)
       ▼
 [AI 서버 :8000]
+  audio_url 로 S3 GET → WAV 다운로드
   발음 분석 (Azure Speech + MediaPipe 융합)
       │
       │ ③ feedback_payload (구조화된 분석 결과)
@@ -85,15 +87,29 @@
 
 ## ② Spring Boot → AI 서버
 
-**엔드포인트:** `POST http://localhost:8000/analyze`
+**엔드포인트:** `POST http://13.209.89.223:8000/analyze`
 
-**형식:** `multipart/form-data` (프론트에서 받은 것 그대로 포워딩)
+**형식:** `application/json`
+
+**사전 작업 (Spring Boot):**
+1. 프론트에서 받은 WAV 파일을 **S3 에 PUT 업로드**
+2. 해당 객체의 **GET 용 presigned HTTPS URL** 을 발급 (만료 60초~5분 권장)
+3. 발급한 URL 을 `audio_url` 필드에 담아 AI 서버에 POST
+
+**JSON 본문 필드:**
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `word` | string | 정답 단어 |
-| `audio_file` | File (WAV) | 음성 파일 |
-| `frames_json` | string (JSON) | MediaPipe raw frame 배열 |
+| `audio_url` | string (URL) | S3 GET 용 presigned **HTTPS** URL |
+| `frames` | array\<RawFrame\> | MediaPipe raw frame 배열 (위 ① `frames_json` 의 안쪽 배열을 그대로 진짜 JSON 배열로) |
+
+**AI 서버 측 강제 제약:**
+- URL scheme = HTTPS
+- S3 응답 Content-Type = `audio/*` 또는 `application/octet-stream`
+- 파일 크기 ≤ 25MB
+
+> 상세 명세: `backend_dto/AI_SERVER_CONTRACT.md`
 
 ---
 

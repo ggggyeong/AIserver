@@ -9,103 +9,129 @@
 
 - **엔드포인트**: `POST http://13.209.89.223:8000/analyze`
 - **Swagger**: http://13.209.89.223:8000/docs
-- **요청 Content-Type**: `multipart/form-data`
+- **요청 Content-Type**: `application/json`
 - **응답 Content-Type**: `application/json`
-- **타임아웃 권장**: 30초 이상 (Azure Speech 호출 + MediaPipe 분석)
+- **타임아웃 권장**: 30초 이상 (S3 다운로드 + Azure Speech + MediaPipe 분석)
 
 ```
-[백엔드]  ── multipart(word, frames_json, audio_file) ──▶  [AI 서버]
-[백엔드]  ◀── JSON(message, word, feedback_payload)  ──   [AI 서버]
+[백엔드]  (1) WAV 를 S3 에 PUT 업로드
+         (2) GET 용 presigned HTTPS URL 발급
+         (3) {word, audio_url, frames} JSON ──▶  [AI 서버]
+                                                       │
+                                                       │ presigned URL 로 S3 GET
+                                                       ▼
+                                                 [S3] WAV 파일
+[백엔드]  ◀── JSON(message, word, feedback_payload) ── [AI 서버]
 ```
 
 ---
 
 ## 1. 백엔드 → AI 서버 (요청)
 
+### 1-0. 백엔드가 사전에 해야 할 일
+
+1. 프론트가 보낸 WAV 파일을 **S3 버킷에 PUT 업로드** (업로드 시 Content-Type: `audio/wav` 권장).
+2. 해당 객체에 대한 **GET 용 presigned HTTPS URL** 을 발급. 만료시간은 **60초~5분** 정도면 충분 (AI 서버가 받자마자 다운로드함).
+3. 발급한 URL 을 `audio_url` 필드에 담아 AI 서버에 POST.
+
+> **AI 서버가 강제하는 제약:**
+> - URL scheme 은 **HTTPS**.
+> - S3 응답 Content-Type 은 **`audio/*`** 또는 **`application/octet-stream`** 이어야 함.
+>   (S3 가 업로드 시 Content-Type 미지정이면 자동으로 octet-stream 반환 → 그래서 둘 다 허용)
+> - 파일 크기는 **25MB 이하**.
+
 ### 1-1. HTTP
 
 ```
 POST /analyze HTTP/1.1
 Host: 13.209.89.223:8000
-Content-Type: multipart/form-data; boundary=----xxxx
+Content-Type: application/json
 ```
 
-### 1-2. multipart 필드 (3개)
+### 1-2. JSON 본문 필드
 
-| 필드명 | 타입 | 필수 | 설명 |
+| 필드 | 타입 | 필수 | 설명 |
 |---|---|---|---|
-| `word` | string (text part) | ✅ | 정답 단어. 예: `"apple"` |
-| `frames_json` | string (text part, JSON 직렬화된 문자열) | ✅ | MediaPipe Face Landmarker가 프레임마다 뱉은 raw 데이터 배열 |
-| `audio_file` | binary (file part, WAV) | ✅ | 사용자 음성 녹음. **Content-Type은 반드시 `audio/wav` / `audio/wave` / `audio/x-wav` 중 하나** |
+| `word` | string | ✅ | 정답 단어. 예: `"apple"` |
+| `audio_url` | string (URL) | ✅ | S3 GET 용 presigned **HTTPS** URL |
+| `frames` | array\<RawFrame\> | ✅ | MediaPipe Face Landmarker raw frame 배열. 비어있지 않아야 함 |
 
-> ⚠️ `frames_json`은 JSON **객체**가 아니라 **JSON 문자열**로 보내야 합니다. (multipart의 text part)
-> 백엔드는 프론트에서 받은 List를 `objectMapper.writeValueAsString(...)` 으로 직렬화해서 그대로 포워딩하면 됩니다.
-
-### 1-3. `frames_json` 안쪽 구조
-
-`List<RawFrame>` 형태이고, 각 RawFrame은 다음과 같습니다.
+### 1-3. `frames[i]` (RawFrame) 구조
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `t_ms` | number | WAV 녹음 시작 시점 기준 경과 시간(ms). 프론트가 `performance.now()` 기준으로 채움 |
 | `face_landmarks` | array | 478개의 정규화 좌표 객체 (`{x, y, z}`, 각 0~1) |
-| `face_blendshapes` | object | MediaPipe blendshape 52개. **key는 categoryName 문자열, value는 0~1 score** |
+| `face_blendshapes` | object | MediaPipe blendshape 52개. **key 는 categoryName 문자열, value 는 0~1 score** |
 
-#### 예시 (요약본)
+#### 요청 본문 예시
 
 ```json
-[
-  {
-    "t_ms": 0,
-    "face_landmarks": [
-      { "x": 0.597, "y": 0.485, "z": -0.038 },
-      { "x": 0.601, "y": 0.486, "z": -0.040 }
-    ],
-    "face_blendshapes": {
-      "jawOpen": 0.72,
-      "mouthClose": 0.03,
-      "mouthFunnel": 0.15,
-      "mouthPucker": 0.08,
-      "mouthStretchLeft": 0.12,
-      "mouthStretchRight": 0.10,
-      "mouthPressLeft": 0.05,
-      "mouthPressRight": 0.06,
-      "mouthUpperUpLeft": 0.20,
-      "mouthUpperUpRight": 0.22,
-      "mouthLowerDownLeft": 0.30,
-      "mouthLowerDownRight": 0.28,
-      "mouthRollLower": 0.04,
-      "mouthRollUpper": 0.02,
-      "tongueOut": 0.0
+{
+  "word": "apple",
+  "audio_url": "https://my-bucket.s3.ap-northeast-2.amazonaws.com/recordings/abc123.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=120&X-Amz-Signature=...",
+  "frames": [
+    {
+      "t_ms": 0,
+      "face_landmarks": [
+        { "x": 0.597, "y": 0.485, "z": -0.038 },
+        { "x": 0.601, "y": 0.486, "z": -0.040 }
+      ],
+      "face_blendshapes": {
+        "jawOpen": 0.72,
+        "mouthClose": 0.03,
+        "mouthFunnel": 0.15,
+        "mouthPucker": 0.08,
+        "mouthStretchLeft": 0.12,
+        "mouthStretchRight": 0.10,
+        "mouthPressLeft": 0.05,
+        "mouthPressRight": 0.06,
+        "mouthUpperUpLeft": 0.20,
+        "mouthUpperUpRight": 0.22,
+        "mouthLowerDownLeft": 0.30,
+        "mouthLowerDownRight": 0.28,
+        "mouthRollLower": 0.04,
+        "mouthRollUpper": 0.02,
+        "tongueOut": 0.0
+      }
+    },
+    {
+      "t_ms": 33,
+      "face_landmarks": [ /* 478개 */ ],
+      "face_blendshapes": { /* 52개 */ }
     }
-  },
-  {
-    "t_ms": 33,
-    "face_landmarks": [ /* 478개 */ ],
-    "face_blendshapes": { /* 52개 */ }
-  }
-]
+  ]
+}
 ```
 
-> 권장 fps: **30fps** 정도. 너무 적으면 phoneme window 안에 프레임이 안 들어가서 시각 점수가 0이 됩니다.
+> 권장 fps: **30fps** 정도. 너무 적으면 phoneme window 안에 프레임이 안 들어가서 시각 점수가 0 이 됩니다.
 
 ### 1-4. 백엔드에서 보내는 예시 (Spring WebClient)
 
 ```java
-MultipartBodyBuilder mb = new MultipartBodyBuilder();
-mb.part("word", "apple");
-mb.part("frames_json", objectMapper.writeValueAsString(frames));
-mb.part("audio_file", new ByteArrayResource(wavBytes) {
-    @Override public String getFilename() { return "recording.wav"; }
-}).contentType(MediaType.parseMediaType("audio/wav"));
+record AnalyzeRequest(
+    String word,
+    @JsonProperty("audio_url") String audioUrl,
+    List<RawFrame> frames
+) {}
 
-webClient.post()
+AnalyzeRequest body = new AnalyzeRequest(
+    "apple",
+    presignedUrl,    // S3 PUT 후 발급받은 GET presigned URL
+    framesFromFront  // 프론트에서 받은 그대로의 List<RawFrame>
+);
+
+AnalyzeResponse res = webClient.post()
     .uri("http://13.209.89.223:8000/analyze")
-    .contentType(MediaType.MULTIPART_FORM_DATA)
-    .body(BodyInserters.fromMultipartData(mb.build()))
+    .contentType(MediaType.APPLICATION_JSON)
+    .bodyValue(body)
     .retrieve()
-    .bodyToMono(AnalyzeResponse.class);
+    .bodyToMono(AnalyzeResponse.class)
+    .block();
 ```
+
+> ⚠️ JSON 직렬화 시 필드명은 **snake_case** (`audio_url`, `t_ms`, `face_landmarks`, `face_blendshapes`) 로 맞춰야 합니다.
+> Jackson `@JsonProperty` 또는 `ObjectMapper` 의 `PropertyNamingStrategies.SNAKE_CASE` 전략을 쓰세요.
 
 ---
 
@@ -333,7 +359,7 @@ webClient.post()
 
 ## 3. 에러 응답
 
-FastAPI 표준 형식. HTTP 상태코드는 400 또는 500.
+FastAPI 표준 형식. HTTP 상태코드는 400 / 422 / 500.
 
 ```json
 {
@@ -345,20 +371,40 @@ FastAPI 표준 형식. HTTP 상태코드는 400 또는 500.
 
 | 상황 | status | detail 예시 |
 |---|---|---|
-| `audio_file`이 WAV가 아닐 때 | 400 | `"WAV 형식의 오디오 파일만 지원합니다."` |
-| `frames_json` JSON 파싱 실패 | 400 | `"frames_json JSON 파싱 오류: ..."` |
-| `frames_json`이 빈 배열 / 배열 아님 | 400 | `"frames_json은 비어있지 않은 배열이어야 합니다."` |
-| 첫 프레임 형식 오류 (필드 누락 등) | 400 | `"frames 형식 오류 (1번 프레임): ..."` |
+| `audio_url` 다운로드 HTTP 실패 (presigned URL 만료/오타) | 400 | `"audio_url 다운로드 실패 (HTTP 403)"` |
+| 다운로드 타임아웃 (connect 5s / read 15s) | 400 | `"audio_url 다운로드 타임아웃 (S3 응답 지연)."` |
+| 다운로드 네트워크 오류 | 400 | `"audio_url 다운로드 네트워크 오류: ..."` |
+| 응답이 audio/* 도 octet-stream 도 아님 | 400 | `"오디오 파일이 아닙니다. Content-Type: text/html"` |
+| 25MB 초과 | 400 | `"오디오 파일이 너무 큽니다 (최대 25MB)."` |
+| S3 가 빈 파일 반환 | 400 | `"audio_url 에서 빈 파일을 받았습니다."` |
+| `frames` 빈 배열 | 400 | `"frames 는 비어있지 않은 배열이어야 합니다."` |
 | 얼굴이 한 프레임도 안 잡힘 | 400 | `"유효한 얼굴 프레임을 추출할 수 없습니다. 카메라와 조명을 확인하세요."` |
 | Azure 발음 분석 실패 | 400 | `"Azure 발음 분석 실패: ..."` |
+| JSON body 검증 실패 (URL 형식, 필드 누락 등) | 422 | FastAPI 표준 ValidationError 배열 |
 | 그 외 내부 예외 | 500 | `"서버 내부 오류: ..."` |
+
+### 422 응답 예시
+
+```json
+{
+  "detail": [
+    {
+      "type": "url_parsing",
+      "loc": ["body", "audio_url"],
+      "msg": "Input should be a valid URL",
+      "input": "not-a-url"
+    }
+  ]
+}
+```
 
 ---
 
 ## 4. 백엔드가 해야 할 일 정리
 
-1. 프론트에서 받은 `word`, `audio_file(WAV)`, `frames_json(string)` 을 그대로 `multipart/form-data` 로 AI 서버 `/analyze` 에 포워딩.
-2. 응답으로 받은 `feedback_payload.llm_context` 를 사용해 GPT 프롬프트 구성:
+1. 프론트에서 받은 WAV 파일을 **S3 에 PUT 업로드** 후 **GET presigned HTTPS URL** 발급.
+2. `{word, audio_url, frames}` 를 `application/json` 으로 AI 서버 `POST /analyze` 호출.
+3. 응답으로 받은 `feedback_payload.llm_context` 를 사용해 GPT 프롬프트 구성:
    - 사용자가 선택한 톤(`순한맛` / `매운맛`)에 맞는 `instructions[톤]` 값을 GPT system/user 프롬프트에 포함
    - `word`, `overall_score`, `praise_point`, `key_issues`, `notes` 를 user 프롬프트에 동봉
-3. GPT 응답(2~3문장)을 프론트에 내림. 점수는 `overall_scores.fused_score_0_10` 사용 권장.
+4. GPT 응답(2~3문장)을 프론트에 내림. 점수는 `overall_scores.fused_score_0_10` 사용 권장.
