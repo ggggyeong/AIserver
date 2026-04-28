@@ -16,6 +16,9 @@ build/
 .vscode/
 .idea/
 
+# macOS
+.DS_Store
+
 # 업로드된 오디오 파일
 uploads/
 *.wav
