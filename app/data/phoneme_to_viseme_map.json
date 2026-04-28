@@ -1,0 +1,47 @@
+{
+  "p": "PP",
+  "b": "PP",
+  "m": "PP",
+
+  "f": "FF",
+  "v": "FF",
+
+  "th": "TH",
+  "dh": "TH",
+
+  "t": "DD",
+  "d": "DD",
+
+  "k": "kk",
+  "g": "kk",
+
+  "sh": "CH",
+  "zh": "CH",
+  "ch": "CH",
+  "jh": "CH",
+
+  "s": "SS",
+  "z": "SS",
+
+  "n": "nn",
+  "l": "nn",
+
+  "r": "RR",
+
+  "aa": "aa",
+  "ae": "aa",
+  "ah": "aa",
+  "ax": "aa",
+
+  "eh": "E",
+  "ey": "E",
+
+  "ih": "ih",
+  "iy": "ih",
+
+  "ao": "oh",
+  "ow": "oh",
+
+  "uh": "ou",
+  "uw": "ou"
+}

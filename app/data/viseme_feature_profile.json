@@ -1,0 +1,450 @@
+{
+  "metadata": {
+    "version": "2.1",
+    "description": "viseme별 시각 분석 규칙. PP/TH는 패턴/절대값 감지, 모음은 ARKit 기반 Gaussian matching, 나머지는 skip.",
+    "sources": [
+      "TalkingHead (met4citizen) build-visemes-from-arkit.py — ARKit blendshape 값의 가장 신뢰할 수 있는 공개 오픈소스 구현. 실제 발음에서 측정된 ARKit blendshape 값을 기반으로 함. https://github.com/met4citizen/TalkingHead",
+      "IPA (International Phonetic Association) 2018 — 조음 위치/방법 분류",
+      "Ladefoged & Johnson, A Course in Phonetics 7th ed. (2015) — 모음 턱 개방도, 자음 입술 형태",
+      "Google MediaPipe Face Landmarker 공식 문서 — blendshape 의미 및 범위. https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker",
+      "MediaPipe Blendshape V2 Model Card — ARKit 호환 52개 blendshape 명세. https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Blendshape%20V2.pdf",
+      "2D 정면 웹캠 가시성 판단 — 조음기관 위치별 카메라 감지 가능 여부"
+    ],
+    "scaling_note": "TalkingHead 값은 3D 아바타 애니메이션 목적으로 실제 발음보다 약간 과장될 수 있음. 실제 발음 측정값에 맞추어 target을 0.80~0.90 수준으로 스케일 조정하고 tolerance를 넓게 설정함.",
+    "analysis_methods": {
+      "pattern_detection": "window 내 key_feature가 peak_threshold 이상의 peak를 보이는가. 수치 비교가 아닌 패턴 발생 여부. PP(양순음)에 사용.",
+      "gaussian": "ARKit/TalkingHead 기반 target값에 Gaussian 함수로 유사도 점수화. 모음에 사용.",
+      "absolute_detection": "key_feature 값이 detection_threshold 이상인가. tongueOut처럼 0이 기본값인 feature에만 사용. TH에 사용.",
+      "skip": "2D 정면 카메라로 감지 불가. visual_reliability = 0, 오디오 점수만 사용."
+    },
+    "feature_space": [
+      "jawOpen", "mouthClose", "mouthFunnel", "mouthPucker",
+      "mouthStretch", "mouthPress", "upperLipRaise", "lowerLipDrop",
+      "mouthWidthNorm", "outerLipHeightNorm", "innerLipGapNorm",
+      "mouthAreaNorm", "mouthAspectRatio", "lipSealScore",
+      "roundnessScore", "stretchSymmetry", "tongueOut"
+    ]
+  },
+
+  "visemes": {
+
+    "PP": {
+      "phoneme_examples": ["p", "b", "m"],
+      "place_of_articulation": "bilabial",
+      "manner": "stop / nasal",
+      "source_note": "IPA: 양순음. TalkingHead: mouthRollLower=0.8, mouthRollUpper=0.8로 입술 완전 폐쇄 구현. 이 동작은 lipSealScore(=1-innerLipGapNorm)로 포착됨. 정면 카메라에서 가장 명확하게 보이는 자음군.",
+      "2d_visibility": "high",
+      "analysis_method": "pattern_detection",
+      "key_feature": "lipSealScore",
+      "peak_threshold": 0.70,
+      "secondary_check": {
+        "feature": "jawOpen",
+        "should_be_below": 0.15
+      },
+      "visual_reliability": 0.95,
+      "consistency_check": {
+        "feature": "lipSealScore",
+        "condition": "peak_exists",
+        "threshold": 0.70,
+        "fail_interpretation": "입술 폐쇄 미감지. 소리가 맞더라도 입술 접촉 동작 확인 필요."
+      },
+      "diagnosis": {
+        "pass_flag": "LIP_CLOSURE_DETECTED",
+        "fail_flag": "NO_LIP_CLOSURE",
+        "fail_tip_ko": "입술이 완전히 닫히지 않았습니다. /p/, /b/, /m/ 발음은 위아래 입술을 완전히 붙였다가 떼야 합니다."
+      }
+    },
+
+    "FF": {
+      "phoneme_examples": ["f", "v"],
+      "place_of_articulation": "labiodental",
+      "manner": "fricative",
+      "source_note": "IPA: 순치음. TalkingHead: mouthPucker=1.0, mouthShrugUpper=1.0, mouthRollLower=1.0. 윗니-아랫입술 접촉. MediaPipe에 직접 blendshape 없어 mouthPress(아랫입술 눌림)와 upperLipRaise(윗입술 올림)로 간접 포착. 신뢰도 낮음.",
+      "2d_visibility": "low-medium",
+      "analysis_method": "gaussian",
+      "visual_reliability": 0.45,
+      "rules": [
+        {
+          "feature": "mouthPress",
+          "stat": "p90",
+          "target": 0.50,
+          "tolerance": 0.25,
+          "weight": 0.45,
+          "direction": "max",
+          "source": "TalkingHead mouthRollLower=1.0에서 아랫입술 상승 간접 추정. 실발화 스케일 적용."
+        },
+        {
+          "feature": "upperLipRaise",
+          "stat": "p90",
+          "target": 0.35,
+          "tolerance": 0.25,
+          "weight": 0.35,
+          "direction": "max",
+          "source": "TalkingHead mouthShrugUpper=1.0에서 윗입술 상승 간접 추정. 실발화 스케일 적용."
+        },
+        {
+          "feature": "jawOpen",
+          "stat": "median",
+          "target": 0.10,
+          "tolerance": 0.12,
+          "weight": 0.20,
+          "direction": "min",
+          "source": "순치음 발음 시 턱은 거의 닫힘. TalkingHead jawOpen 미지정 → 0에 가까운 값 설정."
+        }
+      ],
+      "diagnosis": {
+        "pass_flag": "LABIODENTAL_POSTURE_DETECTED",
+        "fail_flag": "NO_LIP_PRESS",
+        "fail_tip_ko": "아랫입술이 윗니에 닿지 않았을 수 있습니다. /f/, /v/ 발음은 윗니를 아랫입술 안쪽에 살짝 닿게 해야 합니다."
+      }
+    },
+
+    "TH": {
+      "phoneme_examples": ["th", "dh"],
+      "place_of_articulation": "interdental",
+      "manner": "fricative",
+      "source_note": "IPA: 치간음. TalkingHead: tongueOut=0.4, jawOpen=0.2, mouthRollUpper=0.6. MediaPipe tongueOut blendshape로 혀 돌출 직접 감지 가능. detection_threshold=0.30은 TalkingHead 0.40의 75% 수준으로 실발화 감도 고려.",
+      "2d_visibility": "medium-high",
+      "analysis_method": "absolute_detection",
+      "key_feature": "tongueOut",
+      "detection_threshold": 0.30,
+      "visual_reliability": 0.80,
+      "consistency_check": {
+        "feature": "tongueOut",
+        "condition": "above_threshold",
+        "threshold": 0.30,
+        "fail_interpretation": "혀 돌출 미감지. /θ/, /ð/ 발음 시 혀가 치아 사이로 나와야 함."
+      },
+      "diagnosis": {
+        "pass_flag": "TONGUE_PROTRUSION_DETECTED",
+        "fail_flag": "NO_TONGUE_PROTRUSION",
+        "fail_tip_ko": "혀를 윗니와 아랫니 사이로 살짝 내밀지 않았습니다. /th/ 발음은 혀 끝이 치아 사이에 위치해야 합니다."
+      }
+    },
+
+    "DD": {
+      "phoneme_examples": ["t", "d"],
+      "place_of_articulation": "alveolar",
+      "manner": "stop",
+      "source_note": "IPA: 치경음. 혀 끝이 윗잇몸에 닿음. 구강 내부 동작으로 2D 정면 카메라 감지 불가.",
+      "2d_visibility": "none",
+      "analysis_method": "skip",
+      "visual_reliability": 0.0,
+      "diagnosis": {
+        "fail_flag": "NOT_VISUALLY_DETECTABLE",
+        "fail_tip_ko": "이 발음은 정면 카메라로 확인이 어렵습니다. 음성 분석 결과를 참고하세요."
+      }
+    },
+
+    "kk": {
+      "phoneme_examples": ["k", "g"],
+      "place_of_articulation": "velar",
+      "manner": "stop",
+      "source_note": "IPA: 연구개음. 혀 뒤쪽이 연구개에 닿음. 2D 정면 카메라로 완전히 불가시.",
+      "2d_visibility": "none",
+      "analysis_method": "skip",
+      "visual_reliability": 0.0,
+      "diagnosis": {
+        "fail_flag": "NOT_VISUALLY_DETECTABLE",
+        "fail_tip_ko": "이 발음은 정면 카메라로 확인이 어렵습니다. 음성 분석 결과를 참고하세요."
+      }
+    },
+
+    "CH": {
+      "phoneme_examples": ["sh", "zh", "ch", "jh"],
+      "place_of_articulation": "postalveolar",
+      "manner": "fricative / affricate",
+      "source_note": "IPA: 후치경음. 약한 입술 둥글림 있으나 다른 소리와 구별 너무 어려움. 신뢰도 낮아 스킵.",
+      "2d_visibility": "very-low",
+      "analysis_method": "skip",
+      "visual_reliability": 0.0,
+      "diagnosis": {
+        "fail_flag": "NOT_VISUALLY_DETECTABLE",
+        "fail_tip_ko": "이 발음은 정면 카메라로 확인이 어렵습니다. 음성 분석 결과를 참고하세요."
+      }
+    },
+
+    "SS": {
+      "phoneme_examples": ["s", "z"],
+      "place_of_articulation": "alveolar",
+      "manner": "fricative (sibilant)",
+      "source_note": "IPA: 치경 치찰음. 혀 끝 위치 불가시. 2D 감지 불가.",
+      "2d_visibility": "none",
+      "analysis_method": "skip",
+      "visual_reliability": 0.0,
+      "diagnosis": {
+        "fail_flag": "NOT_VISUALLY_DETECTABLE",
+        "fail_tip_ko": "이 발음은 정면 카메라로 확인이 어렵습니다. 음성 분석 결과를 참고하세요."
+      }
+    },
+
+    "nn": {
+      "phoneme_examples": ["n", "l"],
+      "place_of_articulation": "alveolar",
+      "manner": "nasal / lateral",
+      "source_note": "IPA: 치경 비음/설측음. 혀 끝이 치경에 닿음. 구강 내부 동작으로 2D 불가시.",
+      "2d_visibility": "none",
+      "analysis_method": "skip",
+      "visual_reliability": 0.0,
+      "diagnosis": {
+        "fail_flag": "NOT_VISUALLY_DETECTABLE",
+        "fail_tip_ko": "이 발음은 정면 카메라로 확인이 어렵습니다. 음성 분석 결과를 참고하세요."
+      }
+    },
+
+    "RR": {
+      "phoneme_examples": ["r"],
+      "place_of_articulation": "retroflex / bunched",
+      "manner": "approximant",
+      "source_note": "IPA: 미국 영어 /r/은 혀 말림(retroflex) 또는 혀 뭉침(bunched). 구강 내부 동작 주. 약한 입술 둥글림 있으나 개인차 크고 신뢰도 낮아 스킵.",
+      "2d_visibility": "none",
+      "analysis_method": "skip",
+      "visual_reliability": 0.0,
+      "diagnosis": {
+        "fail_flag": "NOT_VISUALLY_DETECTABLE",
+        "fail_tip_ko": "이 발음은 정면 카메라로 확인이 어렵습니다. 음성 분석 결과를 참고하세요."
+      }
+    },
+
+    "aa": {
+      "phoneme_examples": ["aa", "ae", "ah", "ax"],
+      "vowel_height": "low (open)",
+      "vowel_backness": "front-central",
+      "source_note": "Ladefoged & Johnson (2015): 저모음 = 턱 최대 하강. TalkingHead: jawOpen=0.60. 실발화 스케일 적용하여 target=0.55. innerLipGapNorm/outerLipHeightNorm은 입 개방의 랜드마크 기반 보조 지표.",
+      "2d_visibility": "high",
+      "analysis_method": "gaussian",
+      "visual_reliability": 0.90,
+      "rules": [
+        {
+          "feature": "jawOpen",
+          "stat": "p90",
+          "target": 0.55,
+          "tolerance": 0.18,
+          "weight": 0.40,
+          "direction": "max",
+          "source": "TalkingHead jawOpen=0.60, 실발화 스케일 0.92 적용"
+        },
+        {
+          "feature": "innerLipGapNorm",
+          "stat": "p90",
+          "target": 0.68,
+          "tolerance": 0.18,
+          "weight": 0.25,
+          "direction": "max",
+          "source": "jawOpen 0.55에 대응하는 랜드마크 내부 입술 간격 추정값"
+        },
+        {
+          "feature": "outerLipHeightNorm",
+          "stat": "p90",
+          "target": 0.60,
+          "tolerance": 0.20,
+          "weight": 0.20,
+          "direction": "max",
+          "source": "개모음 입 높이 랜드마크 추정값"
+        },
+        {
+          "feature": "lowerLipDrop",
+          "stat": "p90",
+          "target": 0.28,
+          "tolerance": 0.20,
+          "weight": 0.15,
+          "direction": "max",
+          "source": "개모음 발음 시 아랫입술 하강. 직접 측정값 없어 추정."
+        }
+      ],
+      "diagnosis": {
+        "pass_flag": "JAW_OPEN_SUFFICIENT",
+        "fail_flag": "JAW_NOT_OPEN",
+        "fail_tip_ko": "이 모음 발음 시 턱을 더 크게 내려야 합니다. /아/ 발음처럼 입을 최대한 크게 벌려보세요."
+      }
+    },
+
+    "E": {
+      "phoneme_examples": ["eh", "ey"],
+      "vowel_height": "mid",
+      "vowel_backness": "front",
+      "source_note": "Ladefoged & Johnson (2015): 중모음, 전설. TalkingHead: jawOpen=0.30, mouthPressLeft/Right=0.80. 전설모음 특성상 입술이 가로로 당겨짐(mouthPress/mouthDimple 조합). mouthStretch 직접 수치는 출처 없어 추정값 사용.",
+      "2d_visibility": "medium",
+      "analysis_method": "gaussian",
+      "visual_reliability": 0.70,
+      "rules": [
+        {
+          "feature": "jawOpen",
+          "stat": "p90",
+          "target": 0.28,
+          "tolerance": 0.15,
+          "weight": 0.35,
+          "direction": "max",
+          "source": "TalkingHead jawOpen=0.30, 실발화 스케일 적용"
+        },
+        {
+          "feature": "mouthPress",
+          "stat": "p90",
+          "target": 0.62,
+          "tolerance": 0.22,
+          "weight": 0.35,
+          "direction": "max",
+          "source": "TalkingHead mouthPressLeft/Right=0.80, 실발화 스케일 0.78 적용"
+        },
+        {
+          "feature": "mouthStretch",
+          "stat": "p90",
+          "target": 0.32,
+          "tolerance": 0.22,
+          "weight": 0.30,
+          "direction": "max",
+          "source": "전설모음 입술 펼침 추정값. 직접 출처 없음."
+        }
+      ],
+      "diagnosis": {
+        "pass_flag": "MID_FRONT_VOWEL_POSTURE",
+        "fail_flag": "JAW_TOO_CLOSED",
+        "fail_tip_ko": "이 모음 발음 시 입을 좀 더 열고 입꼬리를 옆으로 당겨야 합니다. /에/ 발음처럼 해보세요."
+      }
+    },
+
+    "ih": {
+      "phoneme_examples": ["ih", "iy"],
+      "vowel_height": "high",
+      "vowel_backness": "front",
+      "source_note": "Ladefoged & Johnson (2015): 고모음, 전설. TalkingHead: jawOpen=0.20, mouthPressLeft/Right=0.60. E보다 전반적으로 낮은 강도. 고모음이므로 턱 개방 최소.",
+      "2d_visibility": "medium-low",
+      "analysis_method": "gaussian",
+      "visual_reliability": 0.60,
+      "rules": [
+        {
+          "feature": "jawOpen",
+          "stat": "p90",
+          "target": 0.18,
+          "tolerance": 0.12,
+          "weight": 0.30,
+          "direction": "min",
+          "source": "TalkingHead jawOpen=0.20, 고모음이므로 낮아야 함"
+        },
+        {
+          "feature": "mouthPress",
+          "stat": "p90",
+          "target": 0.48,
+          "tolerance": 0.22,
+          "weight": 0.38,
+          "direction": "max",
+          "source": "TalkingHead mouthPressLeft/Right=0.60, 실발화 스케일 0.80 적용"
+        },
+        {
+          "feature": "mouthStretch",
+          "stat": "p90",
+          "target": 0.25,
+          "tolerance": 0.20,
+          "weight": 0.32,
+          "direction": "max",
+          "source": "고전설모음 입술 펼침 추정값. 직접 출처 없음."
+        }
+      ],
+      "diagnosis": {
+        "pass_flag": "HIGH_FRONT_VOWEL_POSTURE",
+        "fail_flag": "LIP_NOT_SPREAD",
+        "fail_tip_ko": "이 모음은 입술을 가로로 살짝 펼치고 턱을 낮게 유지해야 합니다. /이/ 발음처럼 입꼬리를 옆으로 당겨보세요."
+      }
+    },
+
+    "oh": {
+      "phoneme_examples": ["ao", "ow"],
+      "vowel_height": "mid",
+      "vowel_backness": "back",
+      "source_note": "Ladefoged & Johnson (2015): 중모음, 후설, 원순. TalkingHead: mouthPucker=1.0, jawOpen=0.20. 입술 둥글림이 지배적. roundnessScore는 mouthPucker+mouthFunnel+입폭 조합 파생 feature. 애니메이션 1.0을 실발화에서는 0.70 수준으로 스케일.",
+      "2d_visibility": "medium-high",
+      "analysis_method": "gaussian",
+      "visual_reliability": 0.78,
+      "rules": [
+        {
+          "feature": "mouthPucker",
+          "stat": "p90",
+          "target": 0.68,
+          "tolerance": 0.22,
+          "weight": 0.40,
+          "direction": "max",
+          "source": "TalkingHead mouthPucker=1.0, 실발화 스케일 0.68 적용"
+        },
+        {
+          "feature": "roundnessScore",
+          "stat": "p90",
+          "target": 0.52,
+          "tolerance": 0.20,
+          "weight": 0.35,
+          "direction": "max",
+          "source": "mouthPucker 0.68에 대응하는 roundnessScore 파생 추정값"
+        },
+        {
+          "feature": "jawOpen",
+          "stat": "median",
+          "target": 0.18,
+          "tolerance": 0.12,
+          "weight": 0.25,
+          "direction": "min",
+          "source": "TalkingHead jawOpen=0.20, 원순모음이므로 낮아야 함"
+        }
+      ],
+      "diagnosis": {
+        "pass_flag": "LIP_ROUNDING_DETECTED",
+        "fail_flag": "LIP_NOT_ROUNDED",
+        "fail_tip_ko": "이 모음 발음 시 입술을 둥글게 오므려야 합니다. /오/ 발음처럼 입술을 앞으로 내밀어보세요."
+      }
+    },
+
+    "ou": {
+      "phoneme_examples": ["uh", "uw"],
+      "vowel_height": "high",
+      "vowel_backness": "back",
+      "source_note": "Ladefoged & Johnson (2015): 고모음, 후설, 원순. TalkingHead: mouthFunnel=1.0 (oh와 반대: oh=mouthPucker, ou=mouthFunnel). 입술 깔때기 모양이 주된 특징. 턱은 거의 닫힘.",
+      "2d_visibility": "high",
+      "analysis_method": "gaussian",
+      "visual_reliability": 0.85,
+      "rules": [
+        {
+          "feature": "mouthFunnel",
+          "stat": "p90",
+          "target": 0.65,
+          "tolerance": 0.22,
+          "weight": 0.42,
+          "direction": "max",
+          "source": "TalkingHead mouthFunnel=1.0, 실발화 스케일 0.65 적용"
+        },
+        {
+          "feature": "roundnessScore",
+          "stat": "p90",
+          "target": 0.58,
+          "tolerance": 0.20,
+          "weight": 0.35,
+          "direction": "max",
+          "source": "mouthFunnel 0.65에 대응하는 roundnessScore 파생 추정값"
+        },
+        {
+          "feature": "jawOpen",
+          "stat": "median",
+          "target": 0.08,
+          "tolerance": 0.10,
+          "weight": 0.23,
+          "direction": "min",
+          "source": "TalkingHead jawOpen 미지정 → 고모음 특성상 거의 닫힘"
+        }
+      ],
+      "diagnosis": {
+        "pass_flag": "LIP_ROUNDING_STRONG",
+        "fail_flag": "LIP_ROUNDING_WEAK",
+        "fail_tip_ko": "이 모음 발음 시 입술을 최대한 둥글게 앞으로 내밀어야 합니다. /우/ 발음처럼 입술을 작고 둥글게 모아보세요."
+      }
+    },
+
+    "sil": {
+      "phoneme_examples": [],
+      "source_note": "침묵 구간. 발음 분석 대상 아님.",
+      "2d_visibility": "none",
+      "analysis_method": "skip",
+      "visual_reliability": 0.0,
+      "diagnosis": {
+        "fail_flag": "SILENCE_SEGMENT",
+        "fail_tip_ko": "침묵 구간입니다."
+      }
+    }
+  }
+}

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Local Pronunciation Demo</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>Local Pronunciation Demo</h1>
+    <p class="muted">
+      기능만 넣은 로컬 테스트용 프런트다.
+      웹캠/마이크에서 MediaPipe Face Landmarker raw frame과 WAV 오디오를 만들고
+      FastAPI <code>/analyze-direct</code>로 바로 보낸다.
+    </p>
+
+    <section class="panel">
+      <div class="grid">
+        <label>
+          AI 서버 URL
+          <input id="endpointInput" type="text" value="http://127.0.0.1:8000/analyze-direct" />
+        </label>
+
+        <label>
+          정답 단어
+          <input id="wordInput" type="text" value="apple" />
+        </label>
+
+        <label>
+          샘플 FPS
+          <input id="fpsInput" type="number" value="30" min="10" max="60" step="1" />
+        </label>
+
+        <label>
+          MediaPipe 모델 경로
+          <input id="modelPathInput" type="text" value="./models/face_landmarker.task" />
+        </label>
+      </div>
+
+      <div class="row">
+        <button id="loadModelBtn">1. 모델 로드</button>
+        <button id="startCameraBtn">2. 카메라/마이크 시작</button>
+        <button id="startCaptureBtn">3. 녹음/추출 시작</button>
+        <button id="stopAnalyzeBtn">4. 중지 후 분석 요청</button>
+        <button id="resetBtn">리셋</button>
+      </div>
+
+      <div class="status">
+        <span id="modelStatus">모델: 대기</span>
+        <span id="mediaStatus">미디어: 대기</span>
+        <span id="captureStatus">캡처: 대기</span>
+      </div>
+    </section>
+
+    <section class="panel split">
+      <div>
+        <h2>Webcam Preview</h2>
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
+      </div>
+
+      <div>
+        <h2>실시간 요약</h2>
+        <div id="stats" class="stats">
+          <div>raw frame count: <strong id="frameCount">0</strong></div>
+          <div>captured seconds: <strong id="capturedSeconds">0.00</strong></div>
+          <div>last face: <strong id="lastFaceState">none</strong></div>
+        </div>
+
+        <h2>로그</h2>
+        <pre id="logBox" class="log"></pre>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>최종 응답</h2>
+      <pre id="resultBox" class="result"></pre>
+    </section>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

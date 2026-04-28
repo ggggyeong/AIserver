@@ -1,0 +1,168 @@
+{
+  "raw_outputs": {
+    "face_landmarks": {
+      "count": 478,
+      "schema": "per landmark: normalized x, y, z",
+      "notes": "478-point 3D face mesh from Face Landmarker"
+    },
+    "face_blendshapes": {
+      "count": 52,
+      "schema": "per category: score in [0, 1]",
+      "notes": "Default Face Landmarker graph output; current graph also notes 53 only if EXTRA_FACE_BLENDSHAPES is provided"
+    },
+    "facial_transformation_matrixes": {
+      "shape": "4x4 per face",
+      "notes": "Optional rigid/canonical-to-detected face transform"
+    }
+  },
+  "blendshape_groups": {
+    "brow": [
+      "browDownLeft",
+      "browDownRight",
+      "browInnerUp",
+      "browOuterUpLeft",
+      "browOuterUpRight"
+    ],
+    "cheek": [
+      "cheekPuff",
+      "cheekSquintLeft",
+      "cheekSquintRight"
+    ],
+    "eye": [
+      "eyeBlinkLeft",
+      "eyeBlinkRight",
+      "eyeLookDownLeft",
+      "eyeLookDownRight",
+      "eyeLookInLeft",
+      "eyeLookInRight",
+      "eyeLookOutLeft",
+      "eyeLookOutRight",
+      "eyeLookUpLeft",
+      "eyeLookUpRight",
+      "eyeSquintLeft",
+      "eyeSquintRight",
+      "eyeWideLeft",
+      "eyeWideRight"
+    ],
+    "jaw": [
+      "jawForward",
+      "jawLeft",
+      "jawOpen",
+      "jawRight"
+    ],
+    "mouth": [
+      "mouthClose",
+      "mouthDimpleLeft",
+      "mouthDimpleRight",
+      "mouthFrownLeft",
+      "mouthFrownRight",
+      "mouthFunnel",
+      "mouthLeft",
+      "mouthLowerDownLeft",
+      "mouthLowerDownRight",
+      "mouthPressLeft",
+      "mouthPressRight",
+      "mouthPucker",
+      "mouthRight",
+      "mouthRollLower",
+      "mouthRollUpper",
+      "mouthShrugLower",
+      "mouthShrugUpper",
+      "mouthSmileLeft",
+      "mouthSmileRight",
+      "mouthStretchLeft",
+      "mouthStretchRight",
+      "mouthUpperUpLeft",
+      "mouthUpperUpRight"
+    ],
+    "nose": [
+      "noseSneerLeft",
+      "noseSneerRight"
+    ],
+    "utility": [
+      "_neutral"
+    ]
+  },
+  "canonical_frame_features_v1": [
+    {
+      "name": "jawOpen",
+      "source": "blendshape",
+      "description": "How far the mandible drops vertically."
+    },
+    {
+      "name": "mouthClose",
+      "source": "blendshape",
+      "description": "Lip closure activation; high when lips seal."
+    },
+    {
+      "name": "mouthFunnel",
+      "source": "blendshape",
+      "description": "Forward funneling of the lips; useful for rounded vowels and sh/ch-like constrictions."
+    },
+    {
+      "name": "mouthPucker",
+      "source": "blendshape",
+      "description": "Lip protrusion/puckering; strongest cue for /u/-like visemes."
+    },
+    {
+      "name": "mouthStretch",
+      "source": "blendshape(avg left/right)",
+      "description": "Horizontal spreading of the mouth corners."
+    },
+    {
+      "name": "mouthPress",
+      "source": "blendshape(avg left/right)",
+      "description": "Lip pressing/compression; useful as a weak FF/PP support cue."
+    },
+    {
+      "name": "upperLipRaise",
+      "source": "blendshape(avg mouthUpperUpLeft/Right)",
+      "description": "Upper-lip lift."
+    },
+    {
+      "name": "lowerLipDrop",
+      "source": "blendshape(avg mouthLowerDownLeft/Right)",
+      "description": "Lower-lip depression."
+    },
+    {
+      "name": "mouthWidthNorm",
+      "source": "landmark-derived",
+      "description": "Distance(61,291) divided by inter-ocular distance."
+    },
+    {
+      "name": "outerLipHeightNorm",
+      "source": "landmark-derived",
+      "description": "Distance(0,17) divided by inter-ocular distance."
+    },
+    {
+      "name": "innerLipGapNorm",
+      "source": "landmark-derived",
+      "description": "Distance(13,14) divided by inter-ocular distance."
+    },
+    {
+      "name": "mouthAreaNorm",
+      "source": "landmark-derived",
+      "description": "Inner-lip polygon area divided by inter-ocular-distance squared."
+    },
+    {
+      "name": "mouthAspectRatio",
+      "source": "landmark-derived",
+      "description": "outerLipHeightNorm / mouthWidthNorm."
+    },
+    {
+      "name": "lipSealScore",
+      "source": "landmark-derived",
+      "description": "1 means nearly sealed lips, 0 means clearly open."
+    },
+    {
+      "name": "roundnessScore",
+      "source": "hybrid derived",
+      "description": "Composite rounding cue from mouthPucker + mouthFunnel + width constriction."
+    },
+    {
+      "name": "stretchSymmetry",
+      "source": "blendshape-derived",
+      "description": "1 - abs(mouthStretchLeft - mouthStretchRight)."
+    }
+  ]
+}
